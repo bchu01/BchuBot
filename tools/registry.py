@@ -16,6 +16,12 @@ from tools.tasks import (
     read_task_lists,
     read_tasks,
 )
+from tools.memory import (
+    MEMORY_CAPABILITIES,
+    MEMORY_DEFINITIONS,
+    read_memory,
+    write_memory,
+)
 from tools.weather import get_weather
 
 
@@ -33,6 +39,8 @@ TOOL_REGISTRY = {
     "create_task": create_task,
     "create_task_list": create_task_list,
     "read_today": read_today,
+    "write_memory": write_memory,
+    "read_memory": read_memory,
 }
 
 
@@ -50,6 +58,7 @@ TOOL_CAPABILITIES = {
     **CALENDAR_CAPABILITIES,
     **TASKS_CAPABILITIES,
     **AGENDA_CAPABILITIES,
+    **MEMORY_CAPABILITIES,
 }
 
 
@@ -139,4 +148,5 @@ TOOL_DEFINITIONS = [
     *CALENDAR_DEFINITIONS,
     *TASKS_DEFINITIONS,
     *AGENDA_DEFINITIONS,
+    *MEMORY_DEFINITIONS,
 ]

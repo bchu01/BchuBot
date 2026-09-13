@@ -40,6 +40,15 @@ Calendar and tasks:
   delete_calendar_event. Prefer event_id from the lookup.
 - Never claim an event, reminder, or task was created or deleted unless
   the tool returned ok: True.
+
+Memory:
+- Short-term conversation stays in this chat only.
+- Long-term facts go in write_memory.
+- Stable identity facts such as name use category 'profile' and a key.
+- When the user asks what you remember, or a question about their
+  preferences or profile, call read_memory first.
+- Do not guess stored facts. If read_memory returns nothing, say so.
+- Never claim you remembered something unless write_memory returned ok: True.
 """
 
 

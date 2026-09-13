@@ -11,6 +11,8 @@ TOOL_PERMISSIONS = {
     "read_tasks": AUTOMATIC,
     "read_task_lists": AUTOMATIC,
     "read_today": AUTOMATIC,
+    "read_memory": AUTOMATIC,
+    "write_memory": AUTOMATIC,
     "create_calendar_event": CONFIRMATION_REQUIRED,
     "create_reminder": CONFIRMATION_REQUIRED,
     "delete_calendar_event": CONFIRMATION_REQUIRED,
