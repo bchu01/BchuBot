@@ -1,0 +1,14 @@
+---
+description: Run the unit tests after every code change
+alwaysApply: true
+---
+
+# Run Tests After Changes
+
+After any code change in this repo, automatically run:
+
+```bash
+python -m unittest discover -s tests -v
+```
+
+Do this without being asked. If tests fail, fix the issue and rerun before considering the change done.

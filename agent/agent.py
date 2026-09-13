@@ -3,11 +3,14 @@ import json
 from ollama import chat
 from tools.registry import TOOL_REGISTRY, TOOL_DEFINITIONS
 
+DEFAULT_MAX_TOOL_ROUNDS = 8
+
 
 class Agent:
-    def __init__(self, model, system_prompt):
+    def __init__(self, model, system_prompt, max_tool_rounds=DEFAULT_MAX_TOOL_ROUNDS):
         self.model = model
         self.system_prompt = system_prompt
+        self.max_tool_rounds = max_tool_rounds
 
         self.messages = [
             {
@@ -21,6 +24,8 @@ class Agent:
             "role": "user",
             "content": user_input
         })
+
+        tool_rounds = 0
 
         while True:
             response = chat(
@@ -39,7 +44,19 @@ class Agent:
 
                 return assistant_message
 
+            if tool_rounds >= self.max_tool_rounds:
+                limit_message = (
+                    "I reached the maximum number of tool steps for this "
+                    "request and stopped without finishing."
+                )
+                self.messages.append({
+                    "role": "assistant",
+                    "content": limit_message
+                })
+                return limit_message
+
             self.messages.append(response.message)
+            tool_rounds += 1
 
             for tool_call in response.message.tool_calls:
                 tool_name = tool_call.function.name
