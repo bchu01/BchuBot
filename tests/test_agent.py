@@ -57,6 +57,28 @@ class AgentLoopTests(unittest.TestCase):
         self.assertEqual(agent.messages[-1]["role"], "assistant")
         self.assertEqual(agent.messages[-1]["content"], result)
 
+    def test_declined_write_does_not_run_the_tool(self):
+        responses = [
+            FakeResponse(
+                tool_calls=[FakeToolCall("create_task", {"title": "Buy milk"})]
+            ),
+            FakeResponse(content="I did not add that task."),
+        ]
+        mock_create_task = MagicMock()
+
+        with patch("agent.agent.chat", side_effect=responses), patch(
+            "agent.agent.request_confirmation", return_value=False
+        ) as mock_confirm, patch.dict(
+            "agent.agent.TOOL_REGISTRY", {"create_task": mock_create_task}
+        ):
+            agent = Agent(model="test-model", system_prompt="test")
+            result = agent.chat("Add buy milk to my tasks")
+
+        mock_confirm.assert_called_once()
+        mock_create_task.assert_not_called()
+        self.assertEqual(result, "I did not add that task.")
+        self.assertIn("declined", agent.messages[-2]["content"])
+
 
 if __name__ == "__main__":
     unittest.main()

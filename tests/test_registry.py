@@ -14,6 +14,11 @@ class CapabilitiesTests(unittest.TestCase):
         self.assertIn("Open-Meteo", summary)
         self.assertIn("open-meteo.com", summary)
 
+    def test_google_sources_are_listed(self):
+        summary = describe_capabilities()
+        self.assertIn("Google Calendar", summary)
+        self.assertIn("Google Tasks", summary)
+
 
 if __name__ == "__main__":
     unittest.main()

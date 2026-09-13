@@ -1,4 +1,21 @@
-from tools.basic import get_time, get_date, calculator
+from tools.agenda import AGENDA_CAPABILITIES, AGENDA_DEFINITIONS, read_today
+from tools.basic import calculator, get_date, get_time
+from tools.calendar import (
+    CALENDAR_CAPABILITIES,
+    CALENDAR_DEFINITIONS,
+    create_calendar_event,
+    create_reminder,
+    delete_calendar_event,
+    read_calendar,
+)
+from tools.tasks import (
+    TASKS_CAPABILITIES,
+    TASKS_DEFINITIONS,
+    create_task,
+    create_task_list,
+    read_task_lists,
+    read_tasks,
+)
 from tools.weather import get_weather
 
 
@@ -7,6 +24,15 @@ TOOL_REGISTRY = {
     "get_date": get_date,
     "calculator": calculator,
     "get_weather": get_weather,
+    "read_calendar": read_calendar,
+    "create_calendar_event": create_calendar_event,
+    "create_reminder": create_reminder,
+    "delete_calendar_event": delete_calendar_event,
+    "read_task_lists": read_task_lists,
+    "read_tasks": read_tasks,
+    "create_task": create_task,
+    "create_task_list": create_task_list,
+    "read_today": read_today,
 }
 
 
@@ -21,6 +47,9 @@ TOOL_CAPABILITIES = {
         "Looks up current weather from Open-Meteo (open-meteo.com). "
         "Requires a place name."
     ),
+    **CALENDAR_CAPABILITIES,
+    **TASKS_CAPABILITIES,
+    **AGENDA_CAPABILITIES,
 }
 
 
@@ -106,5 +135,8 @@ TOOL_DEFINITIONS = [
                 "required": ["location"]
             }
         }
-    }
+    },
+    *CALENDAR_DEFINITIONS,
+    *TASKS_DEFINITIONS,
+    *AGENDA_DEFINITIONS,
 ]

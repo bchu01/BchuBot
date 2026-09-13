@@ -1,9 +1,15 @@
 import json
 
 from ollama import chat
+from tools.permissions import (
+    CONFIRMATION_REQUIRED,
+    DISABLED,
+    permission_for,
+    request_confirmation,
+)
 from tools.registry import TOOL_REGISTRY, TOOL_DEFINITIONS
 
-DEFAULT_MAX_TOOL_ROUNDS = 8
+DEFAULT_MAX_TOOL_ROUNDS = 12
 
 
 class Agent:
@@ -70,12 +76,27 @@ class Agent:
                     arguments = tool_call.function.arguments
 
                     if isinstance(arguments, str):
-                        arguments = json.loads(arguments)
+                        try:
+                            arguments = json.loads(arguments)
+                        except json.JSONDecodeError:
+                            arguments = {}
 
-                    try:
-                        tool_result = tool(**arguments)
-                    except Exception as e:
-                        tool_result = f"Tool error: {str(e)}"
+                    if not isinstance(arguments, dict):
+                        arguments = {}
+
+                    permission = permission_for(tool_name)
+                    if permission == DISABLED:
+                        tool_result = f"The {tool_name} tool is disabled."
+                    elif (
+                        permission == CONFIRMATION_REQUIRED
+                        and not request_confirmation(tool_name, arguments)
+                    ):
+                        tool_result = "The user declined this action."
+                    else:
+                        try:
+                            tool_result = tool(**arguments)
+                        except Exception as e:
+                            tool_result = f"Tool error: {str(e)}"
 
                 self.messages.append({
                     "role": "tool",

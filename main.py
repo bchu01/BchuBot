@@ -29,6 +29,17 @@ whether to answer directly or call one of your tools. Tool results come
 from Python functions, not from guessing.
 
 {describe_capabilities()}
+
+Calendar and tasks:
+- Google Calendar stores events and timed reminders.
+- Google Tasks stores todo lists and tasks.
+- For "what do I need to do today" or a daily schedule, call read_today first.
+- If asked to create a schedule, summarize existing items, propose times,
+  then create events or tasks one at a time.
+- If asked to cancel or delete an event, look it up first, then call
+  delete_calendar_event. Prefer event_id from the lookup.
+- Never claim an event, reminder, or task was created or deleted unless
+  the tool returned ok: True.
 """
 
 

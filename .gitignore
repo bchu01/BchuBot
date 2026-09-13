@@ -4,3 +4,10 @@ __pycache__/
 *.py[cod]
 .DS_Store
 .vscode/
+BchuBot-env/
+.bchubot/
+secrets/
+credentials.json
+token.json
+google_credentials.json
+google_token.json
