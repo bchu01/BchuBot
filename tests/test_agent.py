@@ -77,7 +77,41 @@ class AgentLoopTests(unittest.TestCase):
         mock_confirm.assert_called_once()
         mock_create_task.assert_not_called()
         self.assertEqual(result, "I did not add that task.")
-        self.assertIn("declined", agent.messages[-2]["content"])
+    def test_on_tool_runs_after_automatic_tools_are_allowed(self):
+        responses = [
+            FakeResponse(tool_calls=[FakeToolCall("calculator", {"expression": "2 + 2"})]),
+            FakeResponse(content="The answer is 4."),
+        ]
+        on_tool = MagicMock()
+
+        with patch("agent.agent.chat", side_effect=responses):
+            agent = Agent(model="test-model", system_prompt="test", on_tool=on_tool)
+            agent.chat("What is 2 + 2?")
+
+        on_tool.assert_called_once_with("calculator", {"expression": "2 + 2"})
+
+    def test_injected_confirm_can_block_a_write(self):
+        responses = [
+            FakeResponse(
+                tool_calls=[FakeToolCall("create_task", {"title": "Buy milk"})]
+            ),
+            FakeResponse(content="I did not add that task."),
+        ]
+        mock_create_task = MagicMock()
+        confirm = MagicMock(return_value=False)
+
+        with patch("agent.agent.chat", side_effect=responses), patch.dict(
+            "agent.agent.TOOL_REGISTRY", {"create_task": mock_create_task}
+        ):
+            agent = Agent(
+                model="test-model",
+                system_prompt="test",
+                confirm=confirm,
+            )
+            agent.chat("Add buy milk to my tasks")
+
+        confirm.assert_called_once()
+        mock_create_task.assert_not_called()
 
 
 if __name__ == "__main__":

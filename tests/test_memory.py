@@ -3,7 +3,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from tools.memory import read_memory, write_memory
+from tools.memory import forget_memory, read_memory, update_memory, write_memory
 
 
 class MemoryTests(unittest.TestCase):
@@ -62,6 +62,53 @@ class MemoryTests(unittest.TestCase):
         result = read_memory(query="calendar timezone")
         self.assertTrue(result["ok"])
         self.assertEqual(result["memories"], [])
+
+    def test_update_memory_replaces_content(self):
+        written = write_memory("User prefers oat milk.")
+        memory_id = written["memory"]["id"]
+
+        updated = update_memory(memory_id, "User prefers almond milk.")
+        self.assertTrue(updated["ok"])
+        self.assertEqual(updated["memory"]["id"], memory_id)
+        self.assertEqual(updated["memory"]["content"], "User prefers almond milk.")
+
+        result = read_memory(query="almond")
+        self.assertEqual(len(result["memories"]), 1)
+
+    def test_update_missing_memory(self):
+        result = update_memory(999, "Nope")
+        self.assertEqual(
+            result,
+            {"ok": False, "error": "Could not find memory 999."},
+        )
+
+    def test_forget_by_id_and_unique_query(self):
+        first = write_memory("User prefers oat milk in coffee.")
+        write_memory("User likes morning runs.")
+
+        deleted = forget_memory(memory_id=str(first["memory"]["id"]))
+        self.assertTrue(deleted["ok"])
+        self.assertEqual(deleted["deleted"]["id"], first["memory"]["id"])
+        self.assertEqual(read_memory(query="coffee")["memories"], [])
+
+        forgotten = forget_memory(query="morning runs")
+        self.assertTrue(forgotten["ok"])
+        self.assertEqual(read_memory(query="runs")["memories"], [])
+
+    def test_forget_does_not_guess_when_query_is_ambiguous(self):
+        write_memory("User likes tea in the morning.")
+        write_memory("User likes tea at night.")
+
+        result = forget_memory(query="tea")
+        self.assertFalse(result["ok"])
+        self.assertIn("Multiple memories", result["error"])
+        self.assertEqual(len(read_memory(query="tea")["memories"]), 2)
+
+    def test_forget_requires_id_or_query(self):
+        self.assertEqual(
+            forget_memory(),
+            {"ok": False, "error": "A memory_id or query is required."},
+        )
 
 
 if __name__ == "__main__":

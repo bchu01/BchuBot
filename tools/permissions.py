@@ -13,6 +13,8 @@ TOOL_PERMISSIONS = {
     "read_today": AUTOMATIC,
     "read_memory": AUTOMATIC,
     "write_memory": AUTOMATIC,
+    "update_memory": AUTOMATIC,
+    "forget_memory": CONFIRMATION_REQUIRED,
     "create_calendar_event": CONFIRMATION_REQUIRED,
     "create_reminder": CONFIRMATION_REQUIRED,
     "delete_calendar_event": CONFIRMATION_REQUIRED,

@@ -139,6 +139,91 @@ def read_memory(query=None, category=None):
         return {"ok": False, "error": "Could not read memories."}
 
 
+def update_memory(memory_id, content):
+    """Replace the text of an existing memory."""
+    parsed_id = _parse_id(memory_id)
+    if parsed_id is None:
+        return {"ok": False, "error": "A memory_id is required."}
+    if not isinstance(content, str) or not content.strip():
+        return {"ok": False, "error": "Memory content is required."}
+    if len(content) > MAX_CONTENT_LENGTH:
+        return {"ok": False, "error": "That memory is too long."}
+
+    created_at = datetime.now(timezone.utc).isoformat()
+    try:
+        with _connect() as connection:
+            existing = _get_by_id(connection, parsed_id)
+            if existing is None:
+                return {"ok": False, "error": f"Could not find memory {parsed_id}."}
+            connection.execute(
+                """
+                UPDATE memories
+                SET content = ?, created_at = ?
+                WHERE id = ?
+                """,
+                (content.strip(), created_at, parsed_id),
+            )
+            row = _get_by_id(connection, parsed_id)
+        return {"ok": True, "memory": _format_row(row)}
+    except Exception:
+        return {"ok": False, "error": "Could not update that memory."}
+
+
+def forget_memory(memory_id=None, query=None, category=None):
+    """Delete a stored memory by id, or by a unique search match."""
+    parsed_id = _parse_id(memory_id)
+    has_query = isinstance(query, str) and bool(query.strip())
+    if parsed_id is None and not has_query:
+        return {"ok": False, "error": "A memory_id or query is required."}
+
+    try:
+        if parsed_id is None:
+            found = read_memory(query=query, category=category)
+            if not found.get("ok"):
+                return found
+            matches = found["memories"]
+            if not matches:
+                return {"ok": False, "error": "Could not find a matching memory."}
+            if len(matches) > 1:
+                return {
+                    "ok": False,
+                    "error": "Multiple memories matched. Use memory_id.",
+                    "memories": matches,
+                }
+            parsed_id = matches[0]["id"]
+
+        with _connect() as connection:
+            existing = _get_by_id(connection, parsed_id)
+            if existing is None:
+                return {"ok": False, "error": f"Could not find memory {parsed_id}."}
+            connection.execute("DELETE FROM memories WHERE id = ?", (parsed_id,))
+        return {"ok": True, "deleted": _format_row(existing)}
+    except Exception:
+        return {"ok": False, "error": "Could not forget that memory."}
+
+
+def _get_by_id(connection, memory_id):
+    return connection.execute(
+        """
+        SELECT id, category, key, content, created_at
+        FROM memories
+        WHERE id = ?
+        """,
+        (memory_id,),
+    ).fetchone()
+
+
+def _parse_id(memory_id):
+    if isinstance(memory_id, bool) or memory_id in (None, ""):
+        return None
+    if isinstance(memory_id, int) and memory_id > 0:
+        return memory_id
+    if isinstance(memory_id, str) and memory_id.strip().isdigit():
+        parsed = int(memory_id.strip())
+        return parsed if parsed > 0 else None
+    return None
+
+
 def _upsert_memory(connection, category, key, content, created_at):
     if category == "profile":
         existing = connection.execute(
@@ -216,6 +301,13 @@ MEMORY_CAPABILITIES = {
         "Searches local SQLite memories and returns a small matching subset. "
         "Does not load the entire memory database into the conversation."
     ),
+    "update_memory": (
+        "Replaces the text of an existing local memory by id."
+    ),
+    "forget_memory": (
+        "Deletes a local memory by id, or by a unique search match. "
+        "Requires confirmation."
+    ),
 }
 
 MEMORY_DEFINITIONS = [
@@ -266,6 +358,58 @@ MEMORY_DEFINITIONS = [
                     "query": {
                         "type": "string",
                         "description": "Words to search for, such as 'coffee'.",
+                    },
+                    "category": {
+                        "type": "string",
+                        "description": "Optional filter: 'memory' or 'profile'.",
+                    },
+                },
+                "required": [],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "update_memory",
+            "description": (
+                "Replace the text of an existing memory. "
+                "Look the memory up with read_memory first and use its id."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "memory_id": {
+                        "type": "integer",
+                        "description": "Id from read_memory.",
+                    },
+                    "content": {
+                        "type": "string",
+                        "description": "The new text to store.",
+                    },
+                },
+                "required": ["memory_id", "content"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "forget_memory",
+            "description": (
+                "Delete a stored memory. Prefer memory_id from read_memory. "
+                "If the id is unknown, use a query that matches only one memory."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "memory_id": {
+                        "type": "integer",
+                        "description": "Id from read_memory.",
+                    },
+                    "query": {
+                        "type": "string",
+                        "description": "Search text used if memory_id is unknown.",
                     },
                     "category": {
                         "type": "string",

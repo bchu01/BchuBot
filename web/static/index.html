@@ -1,0 +1,207 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>BchuBot</title>
+  <style>
+    :root {
+      --bg: #f4f1ea;
+      --panel: #fffdf8;
+      --ink: #1f1b16;
+      --muted: #6d6458;
+      --line: #e4dcd0;
+      --accent: #2f5d50;
+      --user: #e8efe9;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      font: 16px/1.45 system-ui, sans-serif;
+      color: var(--ink);
+      background: var(--bg);
+      display: flex;
+      flex-direction: column;
+    }
+    header {
+      padding: 1rem 1.25rem;
+      border-bottom: 1px solid var(--line);
+      background: var(--panel);
+    }
+    header h1 {
+      margin: 0;
+      font-size: 1.1rem;
+      font-weight: 600;
+    }
+    header p {
+      margin: 0.2rem 0 0;
+      color: var(--muted);
+      font-size: 0.9rem;
+    }
+    #log {
+      flex: 1;
+      overflow: auto;
+      padding: 1rem 1.25rem 6rem;
+      display: flex;
+      flex-direction: column;
+      gap: 0.75rem;
+    }
+    .msg {
+      max-width: 42rem;
+      padding: 0.75rem 0.9rem;
+      border-radius: 0.75rem;
+      white-space: pre-wrap;
+    }
+    .msg.user {
+      align-self: flex-end;
+      background: var(--user);
+    }
+    .msg.bot, .msg.system {
+      align-self: flex-start;
+      background: var(--panel);
+      border: 1px solid var(--line);
+    }
+    .msg.system { color: var(--muted); font-size: 0.9rem; }
+    .msg.error { border-color: #c45c4a; }
+    #confirm {
+      display: none;
+      margin: 0 1.25rem 0.75rem;
+      padding: 0.9rem 1rem;
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 0.75rem;
+    }
+    #confirm.visible { display: block; }
+    #confirm pre {
+      margin: 0.5rem 0 0.75rem;
+      white-space: pre-wrap;
+      font-size: 0.85rem;
+      color: var(--muted);
+    }
+    #confirm .actions { display: flex; gap: 0.5rem; }
+    form {
+      display: flex;
+      gap: 0.5rem;
+      padding: 0.75rem 1.25rem 1.25rem;
+      background: var(--panel);
+      border-top: 1px solid var(--line);
+    }
+    textarea {
+      flex: 1;
+      min-height: 2.75rem;
+      max-height: 8rem;
+      resize: vertical;
+      padding: 0.65rem 0.75rem;
+      border: 1px solid var(--line);
+      border-radius: 0.6rem;
+      font: inherit;
+    }
+    button {
+      border: 0;
+      border-radius: 0.6rem;
+      padding: 0.65rem 1rem;
+      background: var(--accent);
+      color: white;
+      font: inherit;
+      cursor: pointer;
+    }
+    button.secondary { background: var(--muted); }
+    button:disabled { opacity: 0.5; cursor: default; }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>BchuBot</h1>
+    <p>Local assistant · stays on this computer</p>
+  </header>
+  <div id="log"></div>
+  <div id="confirm">
+    <strong>Allow this action?</strong>
+    <pre id="confirm-detail"></pre>
+    <div class="actions">
+      <button type="button" id="allow">Allow</button>
+      <button type="button" class="secondary" id="deny">Deny</button>
+    </div>
+  </div>
+  <form id="form">
+    <textarea id="input" rows="1" placeholder="Message BchuBot" autofocus></textarea>
+    <button type="submit" id="send">Send</button>
+  </form>
+  <script>
+    const log = document.getElementById("log");
+    const form = document.getElementById("form");
+    const input = document.getElementById("input");
+    const send = document.getElementById("send");
+    const confirmBox = document.getElementById("confirm");
+    const confirmDetail = document.getElementById("confirm-detail");
+    const ws = new WebSocket(`ws://${location.host}/ws`);
+    let busy = false;
+
+    function add(role, text) {
+      const el = document.createElement("div");
+      el.className = `msg ${role}`;
+      el.textContent = text;
+      log.appendChild(el);
+      log.scrollTop = log.scrollHeight;
+      return el;
+    }
+
+    function setBusy(value) {
+      busy = value;
+      send.disabled = value;
+    }
+
+    function hideConfirm() {
+      confirmBox.classList.remove("visible");
+    }
+
+    ws.addEventListener("open", () => add("system", "Connected."));
+    ws.addEventListener("close", () => {
+      add("system", "Disconnected. Refresh the page.");
+      setBusy(false);
+    });
+    ws.addEventListener("message", (event) => {
+      const data = JSON.parse(event.data);
+      if (data.type === "status") add("system", data.text);
+      if (data.type === "reply") {
+        add("bot", data.text || "(No reply)");
+        setBusy(false);
+      }
+      if (data.type === "error") {
+        add("error", data.text || "Something went wrong.");
+        setBusy(false);
+      }
+      if (data.type === "confirm") {
+        confirmDetail.textContent =
+          data.tool + "\n" + JSON.stringify(data.arguments || {}, null, 2);
+        confirmBox.classList.add("visible");
+      }
+    });
+
+    form.addEventListener("submit", (event) => {
+      event.preventDefault();
+      const text = input.value.trim();
+      if (!text || busy || ws.readyState !== WebSocket.OPEN) return;
+      add("user", text);
+      ws.send(JSON.stringify({ type: "message", text }));
+      input.value = "";
+      setBusy(true);
+    });
+
+    function answer(allow) {
+      hideConfirm();
+      ws.send(JSON.stringify({ type: "confirm", allow }));
+    }
+    document.getElementById("allow").onclick = () => answer(true);
+    document.getElementById("deny").onclick = () => answer(false);
+
+    input.addEventListener("keydown", (event) => {
+      if (event.key === "Enter" && !event.shiftKey) {
+        event.preventDefault();
+        form.requestSubmit();
+      }
+    });
+  </script>
+</body>
+</html>

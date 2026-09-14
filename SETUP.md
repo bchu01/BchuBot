@@ -56,17 +56,29 @@ Headless machines (no browser) will get stuck on that login.
 
 ## 4. Run
 
+**Terminal**
+
 ```bash
 source BchuBot-env/bin/activate
 python main.py
 ```
 
+**Chat page (local browser)**
+
+```bash
+source BchuBot-env/bin/activate
+python -m web.server
+```
+
+Open http://127.0.0.1:8000  
+That page talks to the same Agent. It is bound to this computer only.
+
+Calendar/Tasks/memory deletes still need confirmation: **y/N** in the terminal, or Allow/Deny in the browser.
+
 Try: `What time is it?` then `What's the weather in Boston?`
 
 For Calendar: `What's on my calendar today?`  
 For memory: `Remember that I prefer oat milk.` then restart and ask again.
-
-Writes to Calendar/Tasks ask `Allow this action? [y/N]`.
 
 ## Checklist
 
@@ -76,3 +88,4 @@ Writes to Calendar/Tasks ask `Allow this action? [y/N]`.
 - [ ] `~/.bchubot/google_credentials.json` in place (if you want Google)
 - [ ] browser login completed on this device
 - [ ] `memory.sqlite` copied only if you want old notes
+- [ ] `python main.py` or `python -m web.server` then http://127.0.0.1:8000

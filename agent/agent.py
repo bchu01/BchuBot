@@ -13,10 +13,19 @@ DEFAULT_MAX_TOOL_ROUNDS = 12
 
 
 class Agent:
-    def __init__(self, model, system_prompt, max_tool_rounds=DEFAULT_MAX_TOOL_ROUNDS):
+    def __init__(
+        self,
+        model,
+        system_prompt,
+        max_tool_rounds=DEFAULT_MAX_TOOL_ROUNDS,
+        confirm=None,
+        on_tool=None,
+    ):
         self.model = model
         self.system_prompt = system_prompt
         self.max_tool_rounds = max_tool_rounds
+        self.confirm = confirm or request_confirmation
+        self.on_tool = on_tool
 
         self.messages = [
             {
@@ -89,10 +98,12 @@ class Agent:
                         tool_result = f"The {tool_name} tool is disabled."
                     elif (
                         permission == CONFIRMATION_REQUIRED
-                        and not request_confirmation(tool_name, arguments)
+                        and not self.confirm(tool_name, arguments)
                     ):
                         tool_result = "The user declined this action."
                     else:
+                        if self.on_tool:
+                            self.on_tool(tool_name, arguments)
                         try:
                             tool_result = tool(**arguments)
                         except Exception as e:

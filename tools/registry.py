@@ -19,7 +19,9 @@ from tools.tasks import (
 from tools.memory import (
     MEMORY_CAPABILITIES,
     MEMORY_DEFINITIONS,
+    forget_memory,
     read_memory,
+    update_memory,
     write_memory,
 )
 from tools.weather import get_weather
@@ -41,6 +43,8 @@ TOOL_REGISTRY = {
     "read_today": read_today,
     "write_memory": write_memory,
     "read_memory": read_memory,
+    "update_memory": update_memory,
+    "forget_memory": forget_memory,
 }
 
 
