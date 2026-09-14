@@ -36,6 +36,10 @@ Calendar and tasks:
   then create events or tasks one at a time.
 - If asked to cancel or delete an event, look it up first, then call
   delete_calendar_event. Prefer event_id from the lookup.
+- For a repeating series, use scope 'all'. For one day only, use scope 'this'.
+- To delete several separate events, pass event_ids.
+- If asked to create a repeating event, call create_calendar_event with
+  recurrence set to daily, weekly, monthly, or yearly.
 - Never claim an event, reminder, or task was created or deleted unless
   the tool returned ok: True.
 

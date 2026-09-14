@@ -70,6 +70,57 @@ class CalendarTests(unittest.TestCase):
         kwargs = service.events.return_value.insert.call_args.kwargs
         self.assertEqual(kwargs["calendarId"], "primary")
         self.assertEqual(kwargs["body"]["summary"], "Lunch")
+        self.assertNotIn("recurrence", kwargs["body"])
+
+    @patch("tools.calendar.calendar_service")
+    def test_create_weekly_recurring_event(self, mock_service):
+        service = _service_with_events(
+            created={
+                "id": "rec1",
+                "summary": "Gym",
+                "start": {"dateTime": "2026-09-14T18:00:00"},
+                "end": {"dateTime": "2026-09-14T19:00:00"},
+                "recurrence": ["RRULE:FREQ=WEEKLY;INTERVAL=1;BYDAY=MO,WE;COUNT=8"],
+            }
+        )
+        mock_service.return_value = service
+
+        result = create_calendar_event(
+            title="Gym",
+            start="2026-09-14T18:00",
+            end="2026-09-14T19:00",
+            recurrence="weekly",
+            recurrence_days="Monday,Wednesday",
+            recurrence_count=8,
+        )
+
+        self.assertTrue(result["ok"])
+        self.assertEqual(
+            result["event"]["recurrence"],
+            ["RRULE:FREQ=WEEKLY;INTERVAL=1;BYDAY=MO,WE;COUNT=8"],
+        )
+        body = service.events.return_value.insert.call_args.kwargs["body"]
+        self.assertEqual(
+            body["recurrence"],
+            ["RRULE:FREQ=WEEKLY;INTERVAL=1;BYDAY=MO,WE;COUNT=8"],
+        )
+        self.assertIn("timeZone", body["start"])
+
+    @patch("tools.calendar.calendar_service")
+    def test_create_rejects_invalid_recurrence(self, mock_service):
+        result = create_calendar_event(
+            title="Gym",
+            start="2026-09-14T18:00",
+            recurrence="hourly",
+        )
+        self.assertEqual(
+            result,
+            {
+                "ok": False,
+                "error": "Recurrence must be daily, weekly, monthly, or yearly.",
+            },
+        )
+        mock_service.assert_not_called()
 
     @patch("tools.calendar.calendar_service")
     def test_create_reminder_uses_short_event(self, mock_service):
@@ -99,7 +150,7 @@ class CalendarTests(unittest.TestCase):
             result,
             {
                 "ok": False,
-                "error": "An event_id or title is required to delete an event.",
+                "error": "An event_id, event_ids, or title is required to delete.",
             },
         )
 
@@ -138,6 +189,38 @@ class CalendarTests(unittest.TestCase):
         self.assertFalse(result["ok"])
         self.assertIn("Multiple events", result["error"])
         service.events.return_value.delete.assert_not_called()
+
+    @patch("tools.calendar.calendar_service")
+    def test_delete_scope_all_uses_series_id(self, mock_service):
+        occurrence = dict(DENTIST, id="abc_20260914", recurringEventId="abc")
+        service = _service_with_events(existing=occurrence)
+        mock_service.return_value = service
+
+        result = delete_calendar_event(event_id="abc_20260914", scope="all")
+
+        self.assertTrue(result["ok"])
+        self.assertEqual(result["scope"], "all")
+        self.assertEqual(result["deleted"]["deleted_id"], "abc")
+        kwargs = service.events.return_value.delete.call_args.kwargs
+        self.assertEqual(kwargs["eventId"], "abc")
+
+    @patch("tools.calendar.calendar_service")
+    def test_delete_multiple_event_ids(self, mock_service):
+        service = _service_with_events(existing=DENTIST)
+        mock_service.return_value = service
+
+        result = delete_calendar_event(event_ids="abc,def")
+
+        self.assertTrue(result["ok"])
+        self.assertEqual(len(result["deleted"]), 2)
+        self.assertEqual(service.events.return_value.delete.call_count, 2)
+
+    def test_delete_rejects_invalid_scope(self):
+        result = delete_calendar_event(event_id="abc", scope="maybe")
+        self.assertEqual(
+            result,
+            {"ok": False, "error": "Scope must be 'this' or 'all'."},
+        )
 
 
 if __name__ == "__main__":
