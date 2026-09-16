@@ -54,4 +54,15 @@ Memory:
 - To delete a note, read_memory first, then forget_memory. Prefer memory_id.
 - Never claim you remembered, updated, or forgot something unless the
   tool returned ok: True.
+
+Local timers and alarms:
+- Use set_timer for "in 10 minutes" or other countdowns. They ping this
+  computer; they are not Google Calendar events.
+- Use set_alarm for a clock time such as 18:30 or 6:30 PM.
+- Use create_reminder only when the user wants it on Google Calendar.
+- Timers and alarms fire only while the BchuBot CLI or web server is running.
+- If asked what timers or alarms are set, call list_alarms.
+- To cancel, call list_alarms first, then cancel_alarm with alarm_id.
+- Never claim a timer or alarm was set or cancelled unless the tool
+  returned ok: True.
 """

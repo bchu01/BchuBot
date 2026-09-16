@@ -2,7 +2,7 @@ from datetime import datetime, timedelta, timezone
 import unittest
 from unittest.mock import patch
 
-from tools.dates import parse_datetime, resolve_day
+from tools.dates import parse_clock_time, parse_datetime, resolve_day
 
 
 FIXED_NOW = datetime(2026, 9, 13, 15, 36, tzinfo=timezone(timedelta(hours=-4)))
@@ -20,6 +20,22 @@ class DateHelperTests(unittest.TestCase):
             parse_datetime("next Friday")
         with self.assertRaises(ValueError):
             parse_datetime("")
+
+    def test_parse_clock_time(self):
+        self.assertEqual(parse_clock_time("18:30").hour, 18)
+        self.assertEqual(parse_clock_time("18:30").minute, 30)
+        self.assertEqual(parse_clock_time("6:30 PM").hour, 18)
+        self.assertEqual(parse_clock_time("6:30pm").hour, 18)
+        self.assertEqual(parse_clock_time("12:15 AM").hour, 0)
+        self.assertEqual(parse_clock_time("12 PM").hour, 12)
+
+    def test_parse_clock_time_rejects_invalid_values(self):
+        with self.assertRaises(ValueError):
+            parse_clock_time("25:00")
+        with self.assertRaises(ValueError):
+            parse_clock_time("noon")
+        with self.assertRaises(ValueError):
+            parse_clock_time("")
 
 
 if __name__ == "__main__":

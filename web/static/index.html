@@ -25,7 +25,7 @@
       flex-direction: column;
     }
     header {
-      padding: 1rem 1.25rem;
+      padding: 0.85rem 1.25rem 0.75rem;
       border-bottom: 1px solid var(--line);
       background: var(--panel);
     }
@@ -38,6 +38,57 @@
       margin: 0.2rem 0 0;
       color: var(--muted);
       font-size: 0.9rem;
+    }
+    .header-top {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 0.75rem;
+    }
+    button.ghost {
+      background: transparent;
+      color: var(--muted);
+      border: 1px solid var(--line);
+      padding: 0.35rem 0.65rem;
+      font-size: 0.8rem;
+      flex-shrink: 0;
+    }
+    button.ghost[aria-pressed="true"] {
+      color: var(--accent);
+      border-color: var(--accent);
+    }
+    #stats {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.4rem;
+      margin-top: 0.7rem;
+    }
+    #stats.is-hidden { display: none; }
+    .stat {
+      display: flex;
+      flex-direction: column;
+      min-width: 5.4rem;
+      padding: 0.35rem 0.55rem;
+      border: 1px solid var(--line);
+      border-radius: 0.5rem;
+      background: var(--bg);
+    }
+    .stat.warn { border-color: #c9a066; }
+    .stat.hot { border-color: #c45c4a; }
+    .stat .label {
+      color: var(--muted);
+      font-size: 0.68rem;
+      letter-spacing: 0.03em;
+      text-transform: uppercase;
+    }
+    .stat .value {
+      font-size: 0.86rem;
+      font-variant-numeric: tabular-nums;
+    }
+    .stat .detail {
+      color: var(--muted);
+      font-size: 0.72rem;
+      font-variant-numeric: tabular-nums;
     }
     #log {
       flex: 1;
@@ -64,6 +115,13 @@
     }
     .msg.system { color: var(--muted); font-size: 0.9rem; }
     .msg.error { border-color: #c45c4a; }
+    .msg.alarm {
+      align-self: flex-start;
+      background: var(--panel);
+      border: 1px solid var(--accent);
+      color: var(--accent);
+      font-weight: 600;
+    }
     #confirm {
       display: none;
       margin: 0 1.25rem 0.75rem;
@@ -112,8 +170,21 @@
 </head>
 <body>
   <header>
-    <h1>BchuBot</h1>
-    <p>Local assistant · stays on this computer</p>
+    <div class="header-top">
+      <div>
+        <h1>BchuBot</h1>
+        <p>Local assistant · stays on this computer</p>
+      </div>
+      <button type="button" id="stats-toggle" class="ghost" aria-pressed="true" aria-controls="stats">Hide stats</button>
+    </div>
+    <div id="stats" aria-live="polite">
+      <div class="stat" id="stat-cpu"><span class="label">CPU</span><span class="value">—</span><span class="detail">this Mac</span></div>
+      <div class="stat" id="stat-ram"><span class="label">RAM</span><span class="value">—</span><span class="detail">used / total</span></div>
+      <div class="stat" id="stat-load"><span class="label">Load</span><span class="value">—</span><span class="detail">1 min / cores</span></div>
+      <div class="stat" id="stat-ollama"><span class="label">Ollama</span><span class="value">—</span><span class="detail">model process</span></div>
+      <div class="stat" id="stat-bchu"><span class="label">BchuBot</span><span class="value">—</span><span class="detail">this app</span></div>
+      <div class="stat" id="stat-temp"><span class="label">Battery</span><span class="value">—</span><span class="detail">not CPU die</span></div>
+    </div>
   </header>
   <div id="log"></div>
   <div id="confirm">
@@ -156,6 +227,23 @@
       confirmBox.classList.remove("visible");
     }
 
+    function beep() {
+      try {
+        const ctx = new AudioContext();
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.type = "sine";
+        osc.frequency.value = 880;
+        gain.gain.value = 0.08;
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+        osc.start();
+        osc.stop(ctx.currentTime + 0.28);
+      } catch (_err) {
+        /* Browsers may block sound until the page has been used. */
+      }
+    }
+
     ws.addEventListener("open", () => add("system", "Connected."));
     ws.addEventListener("close", () => {
       add("system", "Disconnected. Refresh the page.");
@@ -171,6 +259,10 @@
       if (data.type === "error") {
         add("error", data.text || "Something went wrong.");
         setBusy(false);
+      }
+      if (data.type === "alarm") {
+        add("alarm", data.text || "Timer done.");
+        beep();
       }
       if (data.type === "confirm") {
         confirmDetail.textContent =
@@ -195,6 +287,111 @@
     }
     document.getElementById("allow").onclick = () => answer(true);
     document.getElementById("deny").onclick = () => answer(false);
+
+    function heatClass(value, warnAt, hotAt) {
+      if (value == null) return "";
+      if (value >= hotAt) return "hot";
+      if (value >= warnAt) return "warn";
+      return "";
+    }
+
+    function setStat(id, value, detail, extraClass) {
+      const el = document.getElementById(id);
+      el.querySelector(".value").textContent = value;
+      if (detail) el.querySelector(".detail").textContent = detail;
+      el.className = "stat" + (extraClass ? " " + extraClass : "");
+    }
+
+    function formatGb(used, total) {
+      if (used == null || total == null) return "—";
+      return used.toFixed(1) + " / " + total.toFixed(1) + " GB";
+    }
+
+    function formatProcess(proc) {
+      if (!proc || !proc.running) return { value: "off", detail: "not running" };
+      const ram = proc.memory_mb >= 1024
+        ? (proc.memory_mb / 1024).toFixed(1) + " GB"
+        : Math.round(proc.memory_mb) + " MB";
+      return {
+        value: proc.cpu_percent.toFixed(1) + "%",
+        detail: ram + " RAM",
+      };
+    }
+
+    const statsBox = document.getElementById("stats");
+    const statsToggle = document.getElementById("stats-toggle");
+    let statsOn = localStorage.getItem("bchubot-stats") !== "off";
+    let statsTimer = null;
+
+    function applyStatsVisibility() {
+      statsBox.classList.toggle("is-hidden", !statsOn);
+      statsToggle.setAttribute("aria-pressed", statsOn ? "true" : "false");
+      statsToggle.textContent = statsOn ? "Hide stats" : "Show stats";
+      localStorage.setItem("bchubot-stats", statsOn ? "on" : "off");
+      if (statsOn) {
+        refreshStats();
+        if (!statsTimer) statsTimer = setInterval(refreshStats, 1000);
+      } else if (statsTimer) {
+        clearInterval(statsTimer);
+        statsTimer = null;
+      }
+    }
+
+    statsToggle.addEventListener("click", () => {
+      statsOn = !statsOn;
+      applyStatsVisibility();
+    });
+
+    async function refreshStats() {
+      if (!statsOn) return;
+      try {
+        const response = await fetch("/stats");
+        if (!response.ok) return;
+        const data = await response.json();
+        let ramHeat = "";
+        if (data.memory_unused_gb != null && data.memory_unused_gb < 0.25) ramHeat = "hot";
+        else if (data.memory_unused_gb != null && data.memory_unused_gb < 0.6) ramHeat = "warn";
+        setStat(
+          "stat-cpu",
+          data.cpu_percent == null ? "—" : data.cpu_percent.toFixed(1) + "%",
+          "this Mac",
+          heatClass(data.cpu_percent, 70, 90)
+        );
+        setStat(
+          "stat-ram",
+          formatGb(data.memory_used_gb, data.memory_total_gb),
+          data.memory_unused_gb == null
+            ? "used / total"
+            : data.memory_unused_gb.toFixed(1) + " GB unused",
+          ramHeat
+        );
+        setStat(
+          "stat-load",
+          data.load_1m == null ? "—" : data.load_1m.toFixed(2),
+          (data.cpu_count || "?") + " cores",
+          heatClass(data.cpu_count ? data.load_1m / data.cpu_count * 100 : null, 70, 100)
+        );
+        const ollama = formatProcess(data.ollama);
+        setStat(
+          "stat-ollama",
+          ollama.value,
+          ollama.detail,
+          heatClass(data.ollama && data.ollama.cpu_percent, 40, 80)
+        );
+        const bchu = formatProcess(data.bchubot);
+        setStat("stat-bchu", bchu.value, bchu.detail);
+        setStat(
+          "stat-temp",
+          data.battery_c == null ? "—" : data.battery_c.toFixed(1) + "°C",
+          "battery, not CPU",
+          heatClass(data.battery_c, 38, 43)
+        );
+      } catch (_err) {
+        /* Keep the last reading if a poll fails. */
+      }
+    }
+
+    applyStatsVisibility();
 
     input.addEventListener("keydown", (event) => {
       if (event.key === "Enter" && !event.shiftKey) {

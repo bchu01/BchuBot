@@ -1,4 +1,12 @@
 from tools.agenda import AGENDA_CAPABILITIES, AGENDA_DEFINITIONS, read_today
+from tools.alarms import (
+    ALARM_CAPABILITIES,
+    ALARM_DEFINITIONS,
+    cancel_alarm,
+    list_alarms,
+    set_alarm,
+    set_timer,
+)
 from tools.basic import calculator, get_date, get_time
 from tools.calendar import (
     CALENDAR_CAPABILITIES,
@@ -45,6 +53,10 @@ TOOL_REGISTRY = {
     "read_memory": read_memory,
     "update_memory": update_memory,
     "forget_memory": forget_memory,
+    "set_timer": set_timer,
+    "set_alarm": set_alarm,
+    "list_alarms": list_alarms,
+    "cancel_alarm": cancel_alarm,
 }
 
 
@@ -63,6 +75,7 @@ TOOL_CAPABILITIES = {
     **TASKS_CAPABILITIES,
     **AGENDA_CAPABILITIES,
     **MEMORY_CAPABILITIES,
+    **ALARM_CAPABILITIES,
 }
 
 
@@ -153,4 +166,5 @@ TOOL_DEFINITIONS = [
     *TASKS_DEFINITIONS,
     *AGENDA_DEFINITIONS,
     *MEMORY_DEFINITIONS,
+    *ALARM_DEFINITIONS,
 ]

@@ -1,4 +1,10 @@
+import re
 from datetime import date, datetime, time, timedelta
+
+CLOCK_RE = re.compile(
+    r"^(\d{1,2})(?::(\d{2}))?(?::(\d{2}))?\s*(a\.?m\.?|p\.?m\.?)?$",
+    re.I,
+)
 
 
 def local_now():
@@ -47,3 +53,33 @@ def parse_datetime(value):
     if parsed.tzinfo is None:
         parsed = parsed.replace(tzinfo=local_now().tzinfo)
     return parsed
+
+
+def parse_clock_time(value):
+    if not isinstance(value, str) or not value.strip():
+        raise ValueError("A time is required, such as 18:30 or 6:30 PM.")
+
+    match = CLOCK_RE.fullmatch(value.strip())
+    if not match:
+        raise ValueError("Time must look like 18:30 or 6:30 PM.")
+
+    hour = int(match.group(1))
+    minute = int(match.group(2) or 0)
+    second = int(match.group(3) or 0)
+    meridiem = match.group(4)
+
+    if minute > 59 or second > 59:
+        raise ValueError("Time must look like 18:30 or 6:30 PM.")
+
+    if meridiem:
+        suffix = meridiem.lower().replace(".", "")
+        if hour < 1 or hour > 12:
+            raise ValueError("Time must look like 18:30 or 6:30 PM.")
+        if suffix.startswith("p") and hour != 12:
+            hour += 12
+        if suffix.startswith("a") and hour == 12:
+            hour = 0
+    elif hour > 23:
+        raise ValueError("Time must look like 18:30 or 6:30 PM.")
+
+    return time(hour, minute, second)

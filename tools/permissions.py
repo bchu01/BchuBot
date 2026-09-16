@@ -20,6 +20,10 @@ TOOL_PERMISSIONS = {
     "delete_calendar_event": CONFIRMATION_REQUIRED,
     "create_task": CONFIRMATION_REQUIRED,
     "create_task_list": CONFIRMATION_REQUIRED,
+    "set_timer": AUTOMATIC,
+    "set_alarm": AUTOMATIC,
+    "list_alarms": AUTOMATIC,
+    "cancel_alarm": AUTOMATIC,
 }
 
 
