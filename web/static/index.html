@@ -138,6 +138,47 @@
       color: var(--muted);
     }
     #confirm .actions { display: flex; gap: 0.5rem; }
+    #progress {
+      display: none;
+      padding: 0.65rem 1.25rem 0.15rem;
+      background: var(--panel);
+      border-top: 1px solid var(--line);
+    }
+    #progress.visible { display: block; }
+    .progress-row {
+      display: flex;
+      align-items: baseline;
+      justify-content: space-between;
+      gap: 0.75rem;
+      margin-bottom: 0.4rem;
+      color: var(--muted);
+      font-size: 0.82rem;
+    }
+    #progress-time { font-variant-numeric: tabular-nums; }
+    .progress-track {
+      height: 0.4rem;
+      background: var(--line);
+      border-radius: 99px;
+      overflow: hidden;
+    }
+    .progress-fill {
+      height: 100%;
+      width: 12%;
+      background: var(--accent);
+      border-radius: 99px;
+      transition: width 0.2s linear;
+    }
+    .progress-fill.indeterminate {
+      width: 32%;
+      animation: progress-slide 1.15s ease-in-out infinite;
+    }
+    @keyframes progress-slide {
+      0% { transform: translateX(-120%); }
+      100% { transform: translateX(360%); }
+    }
+    .msg.streaming {
+      border-style: dashed;
+    }
     form {
       display: flex;
       gap: 0.5rem;
@@ -166,9 +207,32 @@
     }
     button.secondary { background: var(--muted); }
     button:disabled { opacity: 0.5; cursor: default; }
+    #toast {
+      position: fixed;
+      right: 1.25rem;
+      bottom: 5.5rem;
+      z-index: 30;
+      display: none;
+      max-width: 16rem;
+      padding: 0.7rem 0.9rem;
+      background: var(--accent);
+      color: white;
+      border-radius: 0.65rem;
+      box-shadow: 0 10px 24px rgba(31, 27, 22, 0.16);
+      font-size: 0.9rem;
+    }
+    #toast.visible {
+      display: block;
+      animation: toast-in 0.22s ease-out;
+    }
+    @keyframes toast-in {
+      from { transform: translateY(8px); }
+      to { transform: none; }
+    }
   </style>
 </head>
 <body>
+  <div id="toast" role="status" aria-live="polite"></div>
   <header>
     <div class="header-top">
       <div>
@@ -195,6 +259,16 @@
       <button type="button" class="secondary" id="deny">Deny</button>
     </div>
   </div>
+  <div id="progress">
+    <div class="progress-row">
+      <span id="progress-label">Thinking…</span>
+      <span id="progress-eta"></span>
+      <span id="progress-time">0.0s</span>
+    </div>
+    <div class="progress-track" role="progressbar" aria-valuemin="0" aria-valuemax="100">
+      <div id="progress-fill" class="progress-fill indeterminate"></div>
+    </div>
+  </div>
   <form id="form">
     <textarea id="input" rows="1" placeholder="Message BchuBot" autofocus></textarea>
     <button type="submit" id="send">Send</button>
@@ -206,8 +280,96 @@
     const send = document.getElementById("send");
     const confirmBox = document.getElementById("confirm");
     const confirmDetail = document.getElementById("confirm-detail");
+    const progress = document.getElementById("progress");
+    const progressLabel = document.getElementById("progress-label");
+    const progressEta = document.getElementById("progress-eta");
+    const progressTime = document.getElementById("progress-time");
+    const progressFill = document.getElementById("progress-fill");
+    const toast = document.getElementById("toast");
     const ws = new WebSocket(`ws://${location.host}/ws`);
     let busy = false;
+    let streamEl = null;
+    let progressStarted = 0;
+    let progressTicker = null;
+    let progressPhase = "thinking";
+    const replyTimes = JSON.parse(localStorage.getItem("bchubot-reply-times") || "[]");
+
+    function typicalReplySeconds() {
+      if (!replyTimes.length) return null;
+      return replyTimes.reduce((sum, value) => sum + value, 0) / replyTimes.length;
+    }
+
+    function rememberReplyTime(seconds) {
+      if (!(seconds > 0)) return;
+      replyTimes.push(seconds);
+      if (replyTimes.length > 8) replyTimes.shift();
+      localStorage.setItem("bchubot-reply-times", JSON.stringify(replyTimes));
+    }
+
+    function formatSeconds(value) {
+      return value.toFixed(1) + "s";
+    }
+
+    function updateProgressClock() {
+      const elapsed = (Date.now() - progressStarted) / 1000;
+      progressTime.textContent = formatSeconds(elapsed);
+      const typical = typicalReplySeconds();
+      if (typical) {
+        const remaining = Math.max(0, typical - elapsed);
+        progressEta.textContent = remaining > 0.5
+          ? "usually ~" + formatSeconds(typical) + " left ~" + formatSeconds(remaining)
+          : "usually ~" + formatSeconds(typical);
+      } else {
+        progressEta.textContent = "no estimate yet";
+      }
+      if (progressPhase === "writing") {
+        const fraction = typical
+          ? Math.min(0.9, elapsed / Math.max(typical, 1))
+          : 1 - Math.exp(-elapsed / 8);
+        progressFill.style.width = Math.round(12 + fraction * 78) + "%";
+      }
+    }
+
+    function startProgress(label) {
+      progressPhase = "thinking";
+      progressStarted = Date.now();
+      progressLabel.textContent = label;
+      progressFill.className = "progress-fill indeterminate";
+      progressFill.style.width = "";
+      progress.classList.add("visible");
+      updateProgressClock();
+      if (!progressTicker) progressTicker = setInterval(updateProgressClock, 100);
+    }
+
+    function setProgressPhase(phase, label) {
+      progressPhase = phase;
+      if (label) progressLabel.textContent = label;
+      else if (phase === "writing") progressLabel.textContent = "Writing…";
+      else progressLabel.textContent = "Thinking…";
+      if (phase === "writing") {
+        progressFill.className = "progress-fill";
+        updateProgressClock();
+      } else {
+        progressFill.className = "progress-fill indeterminate";
+        progressFill.style.width = "";
+      }
+    }
+
+    function stopProgress() {
+      const elapsed = progressStarted ? (Date.now() - progressStarted) / 1000 : 0;
+      rememberReplyTime(elapsed);
+      progressFill.className = "progress-fill";
+      progressFill.style.width = "100%";
+      progressLabel.textContent = "Done";
+      if (progressTicker) {
+        clearInterval(progressTicker);
+        progressTicker = null;
+      }
+      setTimeout(() => {
+        progress.classList.remove("visible");
+        progressFill.style.width = "";
+      }, 350);
+    }
 
     function add(role, text) {
       const el = document.createElement("div");
@@ -221,6 +383,31 @@
     function setBusy(value) {
       busy = value;
       send.disabled = value;
+      if (!value && progressTicker) stopProgress();
+    }
+
+    function appendStream(text) {
+      if (!streamEl) {
+        streamEl = add("bot", "");
+        streamEl.classList.add("streaming");
+      }
+      streamEl.textContent += text;
+      log.scrollTop = log.scrollHeight;
+      setProgressPhase("writing");
+    }
+
+    function finishStream(text) {
+      const finalText = text || "(No reply)";
+      if (streamEl) {
+        streamEl.textContent = finalText;
+        streamEl.classList.remove("streaming");
+        streamEl = null;
+      } else {
+        add("bot", finalText);
+      }
+      stopProgress();
+      setBusy(false);
+      notifyDone();
     }
 
     function hideConfirm() {
@@ -228,35 +415,82 @@
     }
 
     function beep() {
-      try {
-        const ctx = new AudioContext();
-        const osc = ctx.createOscillator();
-        const gain = ctx.createGain();
-        osc.type = "sine";
-        osc.frequency.value = 880;
-        gain.gain.value = 0.08;
-        osc.connect(gain);
-        gain.connect(ctx.destination);
-        osc.start();
-        osc.stop(ctx.currentTime + 0.28);
-      } catch (_err) {
-        /* Browsers may block sound until the page has been used. */
-      }
+      playTones([[880, 0, 0.22]]);
+    }
+
+    function notifyDone() {
+      showToast("BchuBot is done");
+      playTones([[523.25, 0, 0.16], [783.99, 0.14, 0.32]], 0.40, "triangle");
+    }
+
+    function showToast(text) {
+      toast.textContent = text;
+      toast.classList.add("visible");
+      clearTimeout(showToast.timer);
+      showToast.timer = setTimeout(() => toast.classList.remove("visible"), 3200);
+    }
+
+    let audioCtx = null;
+
+    function unlockAudio() {
+      const Ctx = window.AudioContext || window.webkitAudioContext;
+      if (!Ctx) return null;
+      if (!audioCtx) audioCtx = new Ctx();
+      if (audioCtx.state === "suspended") audioCtx.resume();
+      return audioCtx;
+    }
+
+    window.addEventListener("pointerdown", unlockAudio);
+    window.addEventListener("keydown", unlockAudio);
+
+    function playTones(notes, volume, type) {
+      const ctx = unlockAudio();
+      if (!ctx) return;
+      const startAt = () => {
+        const now = ctx.currentTime;
+        const peak = volume == null ? 0.08 : volume;
+        const wave = type || "sine";
+        notes.forEach(([freq, start, duration]) => {
+          const osc = ctx.createOscillator();
+          const gain = ctx.createGain();
+          osc.type = wave;
+          osc.frequency.value = freq;
+          gain.gain.setValueAtTime(0, now + start);
+          gain.gain.linearRampToValueAtTime(peak, now + start + 0.025);
+          gain.gain.linearRampToValueAtTime(0, now + start + duration);
+          osc.connect(gain);
+          gain.connect(ctx.destination);
+          osc.start(now + start);
+          osc.stop(now + start + duration + 0.03);
+        });
+      };
+      if (ctx.state === "suspended") ctx.resume().then(startAt);
+      else startAt();
     }
 
     ws.addEventListener("open", () => add("system", "Connected."));
     ws.addEventListener("close", () => {
       add("system", "Disconnected. Refresh the page.");
+      streamEl = null;
       setBusy(false);
     });
     ws.addEventListener("message", (event) => {
       const data = JSON.parse(event.data);
-      if (data.type === "status") add("system", data.text);
-      if (data.type === "reply") {
-        add("bot", data.text || "(No reply)");
-        setBusy(false);
+      if (data.type === "status") {
+        add("system", data.text);
+        if (streamEl && data.text && data.text.indexOf("Using ") === 0) {
+          streamEl.remove();
+          streamEl = null;
+        }
+        if (busy) setProgressPhase("thinking", data.text);
       }
+      if (data.type === "progress") {
+        setProgressPhase(data.phase === "writing" ? "writing" : "thinking");
+      }
+      if (data.type === "token") appendStream(data.text || "");
+      if (data.type === "reply") finishStream(data.text);
       if (data.type === "error") {
+        streamEl = null;
         add("error", data.text || "Something went wrong.");
         setBusy(false);
       }
@@ -276,9 +510,11 @@
       const text = input.value.trim();
       if (!text || busy || ws.readyState !== WebSocket.OPEN) return;
       add("user", text);
+      unlockAudio();
       ws.send(JSON.stringify({ type: "message", text }));
       input.value = "";
       setBusy(true);
+      startProgress("Thinking…");
     });
 
     function answer(allow) {

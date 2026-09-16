@@ -1,4 +1,6 @@
 import json
+from collections.abc import Iterator
+from types import SimpleNamespace
 
 from ollama import chat
 from tools.permissions import (
@@ -20,12 +22,16 @@ class Agent:
         max_tool_rounds=DEFAULT_MAX_TOOL_ROUNDS,
         confirm=None,
         on_tool=None,
+        on_token=None,
+        on_thinking=None,
     ):
         self.model = model
         self.system_prompt = system_prompt
         self.max_tool_rounds = max_tool_rounds
         self.confirm = confirm or request_confirmation
         self.on_tool = on_tool
+        self.on_token = on_token
+        self.on_thinking = on_thinking
 
         self.messages = [
             {
@@ -43,14 +49,10 @@ class Agent:
         tool_rounds = 0
 
         while True:
-            response = chat(
-                model=self.model,
-                messages=self.messages,
-                tools=TOOL_DEFINITIONS
-            )
+            message = self._model_turn()
 
-            if not response.message.tool_calls:
-                assistant_message = response.message.content
+            if not message.tool_calls:
+                assistant_message = message.content or ""
 
                 self.messages.append({
                     "role": "assistant",
@@ -70,10 +72,10 @@ class Agent:
                 })
                 return limit_message
 
-            self.messages.append(response.message)
+            self.messages.append(self._history_message(message))
             tool_rounds += 1
 
-            for tool_call in response.message.tool_calls:
+            for tool_call in message.tool_calls:
                 tool_name = tool_call.function.name
 
                 if tool_name not in TOOL_REGISTRY:
@@ -113,3 +115,64 @@ class Agent:
                     "role": "tool",
                     "content": str(tool_result)
                 })
+
+    def _model_turn(self):
+        result = chat(
+            model=self.model,
+            messages=self.messages,
+            tools=TOOL_DEFINITIONS,
+            stream=True,
+        )
+        if hasattr(result, "message") and not isinstance(result, Iterator):
+            message = result.message
+            if (
+                self.on_token
+                and message.content
+                and not message.tool_calls
+            ):
+                self.on_token(message.content)
+            return message
+        return self._consume_stream(result)
+
+    def _consume_stream(self, chunks):
+        content = []
+        thinking = []
+        tool_calls = []
+        for chunk in chunks:
+            message = chunk.message
+            think = getattr(message, "thinking", None) or ""
+            piece = message.content or ""
+            if think:
+                thinking.append(think)
+                if self.on_thinking:
+                    self.on_thinking(think)
+            if piece:
+                content.append(piece)
+                if self.on_token:
+                    self.on_token(piece)
+            if message.tool_calls:
+                tool_calls.extend(message.tool_calls)
+        return SimpleNamespace(
+            role="assistant",
+            content="".join(content) or None,
+            thinking="".join(thinking) or None,
+            tool_calls=tool_calls or None,
+        )
+
+    def _history_message(self, message):
+        entry = {
+            "role": getattr(message, "role", "assistant"),
+            "content": message.content or "",
+        }
+        thinking = getattr(message, "thinking", None)
+        if thinking:
+            entry["thinking"] = thinking
+        if message.tool_calls:
+            dumped = []
+            for call in message.tool_calls:
+                if hasattr(call, "model_dump"):
+                    dumped.append(call.model_dump())
+                else:
+                    dumped.append(call)
+            entry["tool_calls"] = dumped
+        return entry

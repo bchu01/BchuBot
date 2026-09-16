@@ -19,14 +19,19 @@ class FakeToolCall:
 
 
 class FakeMessage:
-    def __init__(self, content=None, tool_calls=None):
+    def __init__(self, content=None, tool_calls=None, thinking=None):
         self.content = content
         self.tool_calls = tool_calls
+        self.thinking = thinking
 
 
 class FakeResponse:
-    def __init__(self, content=None, tool_calls=None):
-        self.message = FakeMessage(content=content, tool_calls=tool_calls)
+    def __init__(self, content=None, tool_calls=None, thinking=None):
+        self.message = FakeMessage(
+            content=content,
+            tool_calls=tool_calls,
+            thinking=thinking,
+        )
 
 
 class AgentLoopTests(unittest.TestCase):
@@ -112,6 +117,48 @@ class AgentLoopTests(unittest.TestCase):
 
         confirm.assert_called_once()
         mock_create_task.assert_not_called()
+
+    def test_streams_tokens_then_returns_full_text(self):
+        chunks = [
+            FakeResponse(content="Hel"),
+            FakeResponse(content="lo"),
+        ]
+        seen = []
+        thinking = []
+
+        with patch("agent.agent.chat", return_value=iter(chunks)):
+            agent = Agent(
+                model="test-model",
+                system_prompt="test",
+                on_token=seen.append,
+                on_thinking=thinking.append,
+            )
+            result = agent.chat("Hi")
+
+        self.assertEqual(result, "Hello")
+        self.assertEqual(seen, ["Hel", "lo"])
+        self.assertEqual(thinking, [])
+
+    def test_thinking_tokens_are_not_part_of_the_reply(self):
+        chunks = [
+            FakeResponse(content=None, thinking="I should greet the user."),
+            FakeResponse(content="Hello."),
+        ]
+        seen = []
+        thinking = []
+
+        with patch("agent.agent.chat", return_value=iter(chunks)):
+            agent = Agent(
+                model="test-model",
+                system_prompt="test",
+                on_token=seen.append,
+                on_thinking=thinking.append,
+            )
+            result = agent.chat("Hi")
+
+        self.assertEqual(result, "Hello.")
+        self.assertEqual(seen, ["Hello."])
+        self.assertEqual(thinking, ["I should greet the user."])
 
 
 if __name__ == "__main__":

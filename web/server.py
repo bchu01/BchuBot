@@ -1,6 +1,7 @@
 import asyncio
 import queue
 import threading
+import time
 from contextlib import asynccontextmanager
 from pathlib import Path
 
@@ -88,9 +89,31 @@ async def chat_socket(websocket: WebSocket):
         )
 
     add_alarm_listener(on_alarm)
-    agent = create_agent(confirm=confirm, on_tool=on_tool)
+    started_tokens = {"sent": False}
+    last_think = {"at": 0.0}
+
+    def on_token(piece):
+        if not started_tokens["sent"]:
+            started_tokens["sent"] = True
+            send({"type": "progress", "phase": "writing"})
+        send({"type": "token", "text": piece})
+
+    def on_thinking(_piece):
+        now = time.monotonic()
+        if now - last_think["at"] < 0.25:
+            return
+        last_think["at"] = now
+        send({"type": "progress", "phase": "thinking"})
+
+    agent = create_agent(
+        confirm=confirm,
+        on_tool=on_tool,
+        on_token=on_token,
+        on_thinking=on_thinking,
+    )
 
     def run_chat(text):
+        started_tokens["sent"] = False
         try:
             reply = agent.chat(text)
             send({"type": "reply", "text": reply or ""})
@@ -121,7 +144,7 @@ async def chat_socket(websocket: WebSocket):
                 continue
 
             busy.set()
-            await websocket.send_json({"type": "status", "text": "Thinking…"})
+            await websocket.send_json({"type": "progress", "phase": "thinking"})
             threading.Thread(target=run_chat, args=(text,), daemon=True).start()
     except WebSocketDisconnect:
         while True:
