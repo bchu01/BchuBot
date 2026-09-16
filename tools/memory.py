@@ -1,4 +1,5 @@
 import os
+import re
 import sqlite3
 from contextlib import contextmanager
 from datetime import datetime, timezone
@@ -9,6 +10,81 @@ CATEGORIES = {"memory", "profile"}
 MAX_CONTENT_LENGTH = 2000
 MAX_QUERY_LENGTH = 200
 DEFAULT_LIMIT = 8
+RETRIEVE_NOTE_LIMIT = 5
+RETRIEVE_PROFILE_LIMIT = 8
+RETRIEVE_CANDIDATE_LIMIT = 24
+MIN_KEYWORD_LENGTH = 3
+TOKEN_RE = re.compile(r"[A-Za-z0-9']+")
+STOPWORDS = frozenset(
+    {
+        "the",
+        "and",
+        "for",
+        "are",
+        "but",
+        "not",
+        "you",
+        "your",
+        "yours",
+        "what",
+        "when",
+        "where",
+        "which",
+        "who",
+        "why",
+        "how",
+        "this",
+        "that",
+        "with",
+        "from",
+        "have",
+        "has",
+        "had",
+        "will",
+        "just",
+        "like",
+        "want",
+        "would",
+        "could",
+        "should",
+        "please",
+        "tell",
+        "about",
+        "some",
+        "more",
+        "than",
+        "then",
+        "into",
+        "them",
+        "they",
+        "their",
+        "there",
+        "here",
+        "its",
+        "can",
+        "did",
+        "does",
+        "doing",
+        "done",
+        "get",
+        "got",
+        "put",
+        "let",
+        "also",
+        "any",
+        "all",
+        "our",
+        "out",
+        "was",
+        "were",
+        "been",
+        "being",
+        "use",
+        "using",
+        "don't",
+        "dont",
+    }
+)
 
 
 def _db_path():
@@ -137,6 +213,27 @@ def read_memory(query=None, category=None):
         }
     except Exception:
         return {"ok": False, "error": "Could not read memories."}
+
+
+def memories_for_prompt(user_text):
+    """Return a short block of relevant notes, or None. Never dumps the full store."""
+    if not isinstance(user_text, str) or not user_text.strip():
+        return None
+
+    profile = read_memory(category="profile").get("memories") or []
+    profile = profile[:RETRIEVE_PROFILE_LIMIT]
+    notes = _notes_for_text(user_text)
+    combined = []
+    seen = set()
+    for item in list(profile) + notes:
+        item_id = item.get("id")
+        if item_id in seen:
+            continue
+        seen.add(item_id)
+        combined.append(item)
+    if not combined:
+        return None
+    return _format_prompt_block(combined)
 
 
 def update_memory(memory_id, content):
@@ -280,6 +377,68 @@ def _like_pattern(query):
         .replace("_", "\\_")
     )
     return f"%{escaped}%"
+
+
+def _keywords(text):
+    words = []
+    seen = set()
+    for raw in TOKEN_RE.findall(text.lower()):
+        word = raw.strip("'")
+        if len(word) < MIN_KEYWORD_LENGTH or word in STOPWORDS or word in seen:
+            continue
+        seen.add(word)
+        words.append(word)
+        if len(words) >= 8:
+            break
+    return words
+
+
+def _notes_for_text(user_text):
+    keywords = _keywords(user_text)
+    if not keywords:
+        return []
+    clauses = []
+    params = []
+    for word in keywords:
+        clauses.append(
+            "(content LIKE ? ESCAPE '\\' OR IFNULL(key, '') LIKE ? ESCAPE '\\')"
+        )
+        pattern = _like_pattern(word)
+        params.extend([pattern, pattern])
+    sql = f"""
+        SELECT id, category, key, content, created_at
+        FROM memories
+        WHERE category = 'memory' AND ({' OR '.join(clauses)})
+        ORDER BY created_at DESC
+        LIMIT ?
+    """
+    params.append(RETRIEVE_CANDIDATE_LIMIT)
+    try:
+        with _connect() as connection:
+            rows = connection.execute(sql, params).fetchall()
+    except Exception:
+        return []
+    scored = []
+    for row in rows:
+        haystack = f"{row['key'] or ''} {row['content']}".lower()
+        hits = sum(1 for word in keywords if word in haystack)
+        if hits:
+            scored.append((hits, row["created_at"], _format_row(row)))
+    scored.sort(key=lambda item: (item[0], item[1]), reverse=True)
+    return [item[2] for item in scored[:RETRIEVE_NOTE_LIMIT]]
+
+
+def _format_prompt_block(items):
+    lines = [
+        "Relevant stored notes for this turn. Use them if they help. "
+        "Do not mention this list unless the user asks what you remember."
+    ]
+    for item in items:
+        if item.get("category") == "profile" and item.get("key"):
+            lines.append(f"- profile {item['key']}: {item['content']}")
+        else:
+            lines.append(f"- {item['content']}")
+    return "\n".join(lines)
 
 
 def _format_row(row):

@@ -24,6 +24,7 @@ class Agent:
         on_tool=None,
         on_token=None,
         on_thinking=None,
+        context_for_message=None,
     ):
         self.model = model
         self.system_prompt = system_prompt
@@ -32,6 +33,8 @@ class Agent:
         self.on_tool = on_tool
         self.on_token = on_token
         self.on_thinking = on_thinking
+        self.context_for_message = context_for_message
+        self._turn_context = None
 
         self.messages = [
             {
@@ -41,6 +44,13 @@ class Agent:
         ]
 
     def chat(self, user_input):
+        self._turn_context = None
+        if self.context_for_message:
+            try:
+                self._turn_context = self.context_for_message(user_input)
+            except Exception:
+                self._turn_context = None
+
         self.messages.append({
             "role": "user",
             "content": user_input
@@ -119,7 +129,7 @@ class Agent:
     def _model_turn(self):
         result = chat(
             model=self.model,
-            messages=self.messages,
+            messages=self._messages_for_model(),
             tools=TOOL_DEFINITIONS,
             stream=True,
         )
@@ -133,6 +143,17 @@ class Agent:
                 self.on_token(message.content)
             return message
         return self._consume_stream(result)
+
+    def _messages_for_model(self):
+        if not self._turn_context or not self.messages:
+            return self.messages
+        head = self.messages[0]
+        rest = self.messages[1:]
+        return [
+            head,
+            {"role": "system", "content": self._turn_context},
+            *rest,
+        ]
 
     def _consume_stream(self, chunks):
         content = []

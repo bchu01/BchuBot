@@ -160,6 +160,26 @@ class AgentLoopTests(unittest.TestCase):
         self.assertEqual(seen, ["Hello."])
         self.assertEqual(thinking, ["I should greet the user."])
 
+    def test_retrieved_context_is_sent_but_not_stored_in_history(self):
+        with patch("agent.agent.chat", return_value=FakeResponse(content="Oat milk.")) as mock_chat:
+            agent = Agent(
+                model="test-model",
+                system_prompt="test",
+                context_for_message=lambda _text: "Relevant stored notes: oat milk",
+            )
+            result = agent.chat("What should I put in my coffee?")
+
+        self.assertEqual(result, "Oat milk.")
+        self.assertEqual(agent.messages[1], {
+            "role": "user",
+            "content": "What should I put in my coffee?",
+        })
+        sent = mock_chat.call_args.kwargs["messages"]
+        self.assertEqual(sent[0]["content"], "test")
+        self.assertEqual(sent[1]["role"], "system")
+        self.assertIn("oat milk", sent[1]["content"])
+        self.assertEqual(sent[2]["content"], "What should I put in my coffee?")
+
 
 if __name__ == "__main__":
     unittest.main()

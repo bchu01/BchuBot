@@ -3,7 +3,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from tools.memory import forget_memory, read_memory, update_memory, write_memory
+from tools.memory import forget_memory, memories_for_prompt, read_memory, update_memory, write_memory
 
 
 class MemoryTests(unittest.TestCase):
@@ -109,6 +109,25 @@ class MemoryTests(unittest.TestCase):
             forget_memory(),
             {"ok": False, "error": "A memory_id or query is required."},
         )
+
+    def test_prompt_retrieval_matches_keywords_and_includes_profile(self):
+        write_memory("Brandon", category="profile", key="name")
+        write_memory("User prefers oat milk in coffee.")
+        write_memory("User likes morning runs.")
+
+        coffee = memories_for_prompt("What should I put in my coffee?")
+        self.assertIsNotNone(coffee)
+        self.assertIn("oat milk", coffee)
+        self.assertIn("profile name: Brandon", coffee)
+        self.assertNotIn("morning runs", coffee)
+
+        greeting = memories_for_prompt("hi")
+        self.assertIsNotNone(greeting)
+        self.assertIn("profile name: Brandon", greeting)
+        self.assertNotIn("oat milk", greeting)
+
+    def test_prompt_retrieval_returns_none_when_store_is_empty(self):
+        self.assertIsNone(memories_for_prompt("What should I put in my coffee?"))
 
 
 if __name__ == "__main__":
