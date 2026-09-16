@@ -175,10 +175,10 @@ class AgentLoopTests(unittest.TestCase):
             "content": "What should I put in my coffee?",
         })
         sent = mock_chat.call_args.kwargs["messages"]
-        self.assertEqual(sent[0]["content"], "test")
-        self.assertEqual(sent[1]["role"], "system")
-        self.assertIn("oat milk", sent[1]["content"])
-        self.assertEqual(sent[2]["content"], "What should I put in my coffee?")
+        self.assertIn("oat milk", sent[0]["content"])
+        self.assertEqual(sent[0]["role"], "system")
+        self.assertEqual(sent[1]["content"], "What should I put in my coffee?")
+        self.assertEqual(agent.messages[0]["content"], "test")
 
 
 if __name__ == "__main__":

@@ -25,6 +25,7 @@ class Agent:
         on_token=None,
         on_thinking=None,
         context_for_message=None,
+        on_context=None,
     ):
         self.model = model
         self.system_prompt = system_prompt
@@ -34,6 +35,7 @@ class Agent:
         self.on_token = on_token
         self.on_thinking = on_thinking
         self.context_for_message = context_for_message
+        self.on_context = on_context
         self._turn_context = None
 
         self.messages = [
@@ -50,6 +52,8 @@ class Agent:
                 self._turn_context = self.context_for_message(user_input)
             except Exception:
                 self._turn_context = None
+        if self._turn_context and self.on_context:
+            self.on_context(self._turn_context)
 
         self.messages.append({
             "role": "user",
@@ -148,11 +152,12 @@ class Agent:
         if not self._turn_context or not self.messages:
             return self.messages
         head = self.messages[0]
-        rest = self.messages[1:]
         return [
-            head,
-            {"role": "system", "content": self._turn_context},
-            *rest,
+            {
+                "role": head.get("role", "system"),
+                "content": (head.get("content") or "") + "\n\n" + self._turn_context,
+            },
+            *self.messages[1:],
         ]
 
     def _consume_stream(self, chunks):

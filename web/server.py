@@ -77,6 +77,9 @@ async def chat_socket(websocket: WebSocket):
     def on_tool(tool_name, _arguments):
         send({"type": "status", "text": f"Using {tool_name}…"})
 
+    def on_context(_text):
+        send({"type": "status", "text": "Using stored notes…"})
+
     def on_alarm(item):
         send(
             {
@@ -110,6 +113,7 @@ async def chat_socket(websocket: WebSocket):
         on_tool=on_tool,
         on_token=on_token,
         on_thinking=on_thinking,
+        on_context=on_context,
     )
 
     def run_chat(text):

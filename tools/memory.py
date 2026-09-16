@@ -42,7 +42,6 @@ STOPWORDS = frozenset(
         "had",
         "will",
         "just",
-        "like",
         "want",
         "would",
         "could",
@@ -216,21 +215,23 @@ def read_memory(query=None, category=None):
 
 
 def memories_for_prompt(user_text):
-    """Return a short block of relevant notes, or None. Never dumps the full store."""
+    """Return a short block of notes, or None. Never dumps the full store."""
     if not isinstance(user_text, str) or not user_text.strip():
         return None
 
-    profile = read_memory(category="profile").get("memories") or []
-    profile = profile[:RETRIEVE_PROFILE_LIMIT]
-    notes = _notes_for_text(user_text)
+    profile = (read_memory(category="profile").get("memories") or [])[:RETRIEVE_PROFILE_LIMIT]
+    recent = (read_memory(category="memory").get("memories") or [])[:RETRIEVE_NOTE_LIMIT]
+    matched = _notes_for_text(user_text)
     combined = []
     seen = set()
-    for item in list(profile) + notes:
+    for item in list(profile) + matched + recent:
         item_id = item.get("id")
         if item_id in seen:
             continue
         seen.add(item_id)
         combined.append(item)
+        if len(combined) >= RETRIEVE_PROFILE_LIMIT + RETRIEVE_NOTE_LIMIT:
+            break
     if not combined:
         return None
     return _format_prompt_block(combined)
@@ -430,8 +431,9 @@ def _notes_for_text(user_text):
 
 def _format_prompt_block(items):
     lines = [
-        "Relevant stored notes for this turn. Use them if they help. "
-        "Do not mention this list unless the user asks what you remember."
+        "Known facts about the user, already retrieved for this turn. "
+        "Use them when they help. Do not call read_memory for facts that "
+        "are already listed. Do not mention this list unless asked."
     ]
     for item in items:
         if item.get("category") == "profile" and item.get("key"):

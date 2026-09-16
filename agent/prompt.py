@@ -49,6 +49,8 @@ Memory:
 - Stable identity facts such as name use category 'profile' and a key.
 - Relevant stored notes may already be attached for this turn. Prefer
   those notes when they answer the question.
+- If known facts about the user are already listed, use them. Do not
+  call read_memory only to re-fetch those same facts.
 - You may still call read_memory if you need a different search.
 - When the user asks what you remember, use the attached notes, or call
   read_memory if none were attached.

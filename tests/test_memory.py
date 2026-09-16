@@ -119,12 +119,17 @@ class MemoryTests(unittest.TestCase):
         self.assertIsNotNone(coffee)
         self.assertIn("oat milk", coffee)
         self.assertIn("profile name: Brandon", coffee)
-        self.assertNotIn("morning runs", coffee)
 
         greeting = memories_for_prompt("hi")
         self.assertIsNotNone(greeting)
         self.assertIn("profile name: Brandon", greeting)
-        self.assertNotIn("oat milk", greeting)
+        self.assertIn("oat milk", greeting)
+
+    def test_prompt_retrieval_includes_recent_notes_when_keywords_miss(self):
+        write_memory("User prefers oat milk in coffee.")
+        result = memories_for_prompt("What do I usually have in the morning?")
+        self.assertIsNotNone(result)
+        self.assertIn("oat milk", result)
 
     def test_prompt_retrieval_returns_none_when_store_is_empty(self):
         self.assertIsNone(memories_for_prompt("What should I put in my coffee?"))
